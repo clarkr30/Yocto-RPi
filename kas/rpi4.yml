@@ -1,0 +1,69 @@
+# kas/rpi4.yml — Milestone 1: core-image-minimal for Raspberry Pi 4B (64-bit)
+# Release: Yocto Project 6.0 "Wrynose" (LTS)
+#
+# From Wrynose on there is no combined "poky" repo. The pieces it used to bundle
+# are fetched separately: bitbake (the build engine), openembedded-core (the
+# core metadata), and meta-yocto (the Poky reference distro, DISTRO = "poky").
+#
+# Build:  time kas build kas/rpi4.yml
+# Shell:  kas shell kas/rpi4.yml      (bitbake env, for bitbake -e / devshell etc.)
+
+header:
+  version: 14
+
+machine: raspberrypi4-64
+distro: poky
+target: core-image-minimal
+
+repos:
+  # Build engine. Not a layer, so its layers are disabled; kas still puts it
+  # on PATH. Wrynose's oe-core requires BitBake >= 2.18 (BB_MIN_VERSION).
+  bitbake:
+    url: https://git.openembedded.org/bitbake
+    branch: "2.18"
+    layers:
+      .: disabled
+
+  openembedded-core:
+    url: https://git.openembedded.org/openembedded-core
+    branch: wrynose
+    layers:
+      meta:
+
+  # Provides the "poky" distro config (meta-poky). meta-yocto-bsp (Yocto's
+  # reference boards) isn't needed for a Pi, so it's left out.
+  meta-yocto:
+    url: https://git.yoctoproject.org/meta-yocto
+    branch: wrynose
+    layers:
+      meta-poky:
+
+  # The BSP layer: machine configs, Pi kernel fork, firmware, boot files.
+  # Its only hard dependency is oe-core.
+  meta-raspberrypi:
+    url: https://github.com/agherzan/meta-raspberrypi
+    branch: wrynose
+
+  # meta-openembedded is intentionally absent for M1: nothing in
+  # core-image-minimal needs it. Add meta-oe when a recipe actually depends
+  # on it (e.g. libiio for the MCP3008 work in M3).
+
+local_conf_header:
+  rpi: |
+    # Turn on the UART in config.txt so a serial console exists on GPIO14/15.
+    # On the Pi 4 that's the mini-UART (ttyS0); Bluetooth keeps the PL011.
+    ENABLE_UART = "1"
+
+    # The Wi-Fi/BT firmware recipe (linux-firmware-rpidistro) carries a
+    # restrictive license flag; accept it up front instead of hitting
+    # "Nothing RPROVIDES linux-firmware-rpidistro-..." mid-build.
+    LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"
+
+  build: |
+    # Delete each recipe's work dir once it's done, to save disk.
+    # In M3, add RM_WORK_EXCLUDE += "linux-raspberrypi <your-module>" so you
+    # can still inspect kernel/module build trees.
+    INHERIT += "rm_work"
+    BB_NUMBER_THREADS = "8"
+    PARALLEL_MAKE = "-j 8"
+    EXTRA_IMAGE_FEATURES += "allow-empty-password empty-root-password allow-root-login ssh-server-dropbear"
